@@ -1,0 +1,6 @@
+google-cloud-texttospeech
+google-cloud-speech
+pydub
+pygame
+python-dotenv
+requests
