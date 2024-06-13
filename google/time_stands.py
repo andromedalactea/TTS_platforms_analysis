@@ -19,8 +19,9 @@ def transcribe_file(speech_file: str) -> speech.RecognizeResponse:
         language_code="en-US",
         enable_word_time_offsets=True,
     )
+    operation = client.long_running_recognize(config=config, audio=audio)
 
-    response = client.recognize(config=config, audio=audio)
+    response = operation.result(timeout=90)
 
     # Each result is for a consecutive portion of the audio. Iterate through
     # them to get the transcripts for the entire audio file.

@@ -1,8 +1,8 @@
 import os
-from google.cloud import texttospeech, speech
+from google.cloud import  speech, texttospeech
 
 # Configurate the environment variable for Google Cloud authentication credentials
-os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/andromedalactea/test/google/vaulted-bit-390622-5ede8f5d79ee.json"
+os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/andromedalactea/freelance/TTS_platforms_analysis/credentials/vaulted-bit-390622-5ede8f5d79ee.json"
 
 from join_audios import merge_audios_with_pause
 
@@ -24,10 +24,12 @@ def synthesize_text(text, file_path, add_breaks=False, speed=1.0, language_code=
         language_code=language_code,
         name=voice_name
     )
+    
     audio_config = texttospeech.AudioConfig(
         audio_encoding=texttospeech.AudioEncoding.LINEAR16,
-        speaking_rate=speed
+        speaking_rate=speed,
     )
+
     response = client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
     
     # Save the audio content to a file
@@ -77,9 +79,11 @@ def transcribe_file(speech_file, language_code="en-US"):
         enable_word_time_offsets=True
     )
 
-    
+    operation = client.long_running_recognize(config=config, audio=audio)
+    response = operation.result(timeout=90)
 
-    return client.recognize(config=config, audio=audio)
+    return response
+
 
 def generate_audio_samples(text, output_dir, language_code="en-US", voice_name="en-US-Polyglot-1"):
     """Main function to generate audio samples."""
@@ -111,7 +115,7 @@ def generate_audio_samples(text, output_dir, language_code="en-US", voice_name="
 if __name__ == '__main__':
     list_exmaples = ["Les enfants ont appris à lire rapidement", "Mon ancien ami est venu me rendre visite hier"]
     for text in list_exmaples:
-        output_dir = "/home/andromedalactea/test/google/autput_audios"
+        output_dir = "/home/andromedalactea/freelance/TTS_platforms_analysis/google/autput_audios"
         # Generar una nueva carpeta para cada ejecución
         output_dir = os.path.join(output_dir, text.replace(" ", "_"))
 

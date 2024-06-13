@@ -14,6 +14,7 @@ def merge_audios_with_pause(directory, keyword, output_file):
     Returns:
         None: Creates an output file with the merged audio.
     """
+    
     # Create a list to store the audio segments
     audios = []
     
