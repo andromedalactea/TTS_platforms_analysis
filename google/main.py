@@ -1,25 +1,53 @@
 import os
-from google.cloud import  speech, texttospeech
+import re
+from google.cloud import texttospeech_v1beta1 as texttospeech
+from google.cloud import speech
+from join_audios import merge_audios_with_pause
 
-# Configurate the environment variable for Google Cloud authentication credentials
+# Configurate the environment variable para Google Cloud authentication credentials
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/andromedalactea/freelance/TTS_platforms_analysis/credentials/vaulted-bit-390622-5ede8f5d79ee.json"
 
-from join_audios import merge_audios_with_pause
+def create_ssml(text, ssml_rate=100, ssml_break=0):
+    """Función para crear el texto SSML con marcas de tiempo."""
+    ssml_prefix = '<speak>'
+    ssml_suffix = '</speak>'
+
+    break_tag = ''
+    if ssml_break > 0:
+        break_tag = f'<break time="{ssml_break}ms"/>'
+
+    if ssml_rate != 100:
+        ssml_prefix = ssml_prefix + f'<prosody rate="{ssml_rate}%">'
+        ssml_suffix = '</prosody>' + ssml_suffix
+
+    phrases = []
+    mark_counter = 0
+
+    for phrase in text.split('. '):
+        words = []
+        for m in re.finditer(r'\S+', phrase):
+            word = m.group()
+            mark = f'<mark name="{mark_counter}"/>'
+            words.append(f'{mark}{word}')
+            mark_counter += 1
+        phrases.append(f'{break_tag}'.join(words))  # Añadir break entre palabras
+
+    ssml_text = f'. {break_tag}'.join(phrases)  # Añadir break entre frases
+    ssml_text = f'{ssml_prefix}{ssml_text}{ssml_suffix}'
+    print(ssml_text)
+    return ssml_text
 
 def synthesize_text(text, file_path, add_breaks=False, speed=1.0, language_code="en-US", voice_name="en-US-Polyglot-1"):
     """Función para sintetizar texto a audio con la opción de agregar pausas entre palabras o no."""
     client = texttospeech.TextToSpeechClient()
-    # Check if we need to add breaks between words
+    
     if add_breaks:
-        words = text.split()
-        break_tag = ' <break time="1ms"/> '
-        text = "<speak>" + break_tag.join(words) + "</speak>"
-        print(text)
-        synthesis_input = texttospeech.SynthesisInput(ssml=text)
+        ssml_text = create_ssml(text, ssml_rate=int(speed * 100), ssml_break=10)
     else:
-        synthesis_input = texttospeech.SynthesisInput(text=text)
+        ssml_text = create_ssml(text, ssml_rate=int(speed * 100))
     
-    
+    synthesis_input = texttospeech.SynthesisInput(ssml=ssml_text)
+
     voice = texttospeech.VoiceSelectionParams(
         language_code=language_code,
         name=voice_name
@@ -27,63 +55,52 @@ def synthesize_text(text, file_path, add_breaks=False, speed=1.0, language_code=
     
     audio_config = texttospeech.AudioConfig(
         audio_encoding=texttospeech.AudioEncoding.LINEAR16,
-        speaking_rate=speed,
     )
 
-    response = client.synthesize_speech(input=synthesis_input, voice=voice, audio_config=audio_config)
+    # Enable time point marking
+    response = client.synthesize_speech(
+        request=texttospeech.SynthesizeSpeechRequest(
+            input=synthesis_input,
+            voice=voice,
+            audio_config=audio_config,
+            enable_time_pointing=[texttospeech.SynthesizeSpeechRequest.TimepointType.SSML_MARK]
+        )
+    )
     
     # Save the audio content to a file
     with open(file_path, "wb") as out:
         out.write(response.audio_content)
 
-def split_audio(input_audio_path, output_folder, response, identification_group = ""):
-    """Function to split the audio file into individual words."""
+    # Extract and return timepoints
+    timepoints = response.timepoints
+    word_timepoints = {int(tp.mark_name): tp.time_seconds for tp in timepoints}
+    return word_timepoints
+
+def split_audio(input_audio_path, output_folder, word_timepoints, identification_group=""):
+    """Function to split the audio file into individual words based on provided timepoints."""
     import wave
-    import audioop
-    from contextlib import closing
 
     with wave.open(input_audio_path, "rb") as in_wav:
         frame_rate = in_wav.getframerate()
         channels = in_wav.getnchannels()
         width = in_wav.getsampwidth()
+        audio_length = in_wav.getnframes()
 
-        for index, result in enumerate(response.results):
-            index = 0
-            for word_info in result.alternatives[0].words:
-                word = word_info.word
-                start = int(word_info.start_time.total_seconds() * frame_rate)
-                end = int(word_info.end_time.total_seconds() * frame_rate)
-                in_wav.setpos(start)
-                frame_data = in_wav.readframes(end - start)
-                # Crear archivo de audio para cada palabra
-                with wave.open(os.path.join(output_folder, f"{index}_{identification_group}_{word}.wav"), "wb") as out_wav:
-                    out_wav.setnchannels(channels)
-                    out_wav.setsampwidth(width)
-                    out_wav.setframerate(frame_rate)
-                    out_wav.writeframes(frame_data)
-                index += 1
+        time_keys = sorted(word_timepoints.keys())
+        for idx in range(len(time_keys)):
+            word_start = word_timepoints[time_keys[idx]]
+            word_end = word_timepoints[time_keys[idx + 1]] if idx + 1 < len(time_keys) else audio_length / frame_rate
 
+            start_frame = int(word_start * frame_rate)
+            end_frame = int(word_end * frame_rate)
+            in_wav.setpos(start_frame)
+            frame_data = in_wav.readframes(end_frame - start_frame)
 
-
-def transcribe_file(speech_file, language_code="en-US"):
-    """Function to transcribe the given audio file."""
-    client = speech.SpeechClient()
-    with open(speech_file, "rb") as audio_file:
-        content = audio_file.read()
-
-    audio = speech.RecognitionAudio(content=content)
-    config = speech.RecognitionConfig(
-        encoding=speech.RecognitionConfig.AudioEncoding.LINEAR16,
-        sample_rate_hertz=24000,
-        language_code=language_code,
-        enable_word_time_offsets=True
-    )
-
-    operation = client.long_running_recognize(config=config, audio=audio)
-    response = operation.result(timeout=90)
-
-    return response
-
+            with wave.open(os.path.join(output_folder, f"{idx}_{identification_group}_{time_keys[idx]}.wav"), "wb") as out_wav:
+                out_wav.setnchannels(channels)
+                out_wav.setsampwidth(width)
+                out_wav.setframerate(frame_rate)
+                out_wav.writeframes(frame_data)
 
 def generate_audio_samples(text, output_dir, language_code="en-US", voice_name="en-US-Polyglot-1"):
     """Main function to generate audio samples."""
@@ -91,19 +108,16 @@ def generate_audio_samples(text, output_dir, language_code="en-US", voice_name="
     os.makedirs(os.path.join(output_dir, "word_by_word"), exist_ok=True)
     
     # Audio without pauses
-    synthesize_text(text, os.path.join(output_dir, "1__full_normal_audio_TTS_google_STT_NotRequire.wav"), add_breaks=False, language_code=language_code, voice_name=voice_name)
+    normal_audio_path = os.path.join(output_dir, "1__full_normal_audio_TTS_google_STT_NotRequire.wav")
+    normal_timepoints = synthesize_text(text, normal_audio_path, add_breaks=False, language_code=language_code, voice_name=voice_name)
     
     # Audio with pauses between words
-    synthesize_text(text, os.path.join(output_dir, "2__spaced_audio_SSSML_breaktimes_TTS_google_STT_NotRequire.wav"), add_breaks=True, language_code=language_code, voice_name=voice_name)
+    spaced_audio_path = os.path.join(output_dir, "2__spaced_audio_SSSML_breaktimes_TTS_google_STT_NotRequire.wav")
+    spaced_timepoints = synthesize_text(text, spaced_audio_path, add_breaks=True, language_code=language_code, voice_name=voice_name)
     
-    # Transcription of the audio files
-    response = transcribe_file(os.path.join(output_dir, "2__spaced_audio_SSSML_breaktimes_TTS_google_STT_NotRequire.wav"), language_code=language_code)
-    print(os.path.join(output_dir, "word_by_word"))
-    split_audio(os.path.join(output_dir, "2__spaced_audio_SSSML_breaktimes_TTS_google_STT_NotRequire.wav"), os.path.join(output_dir, "word_by_word"), response, identification_group="spaced")
-
-    # Transcription of the audio files
-    response = transcribe_file(os.path.join(output_dir, "1__full_normal_audio_TTS_google_STT_NotRequire.wav"), language_code=language_code)
-    split_audio(os.path.join(output_dir, "1__full_normal_audio_TTS_google_STT_NotRequire.wav"), os.path.join(output_dir, "word_by_word"), response, identification_group="full")
+    # Split the audio files using the timepoints
+    split_audio(spaced_audio_path, os.path.join(output_dir, "word_by_word"), spaced_timepoints, identification_group="spaced")
+    split_audio(normal_audio_path, os.path.join(output_dir, "word_by_word"), normal_timepoints, identification_group="full")
 
     # Generate an audio with the words spaced in only one
     merge_audios_with_pause(os.path.join(output_dir, "word_by_word"), 'spaced', os.path.join(output_dir, "4__Joined_spaced_audio_with_spaced_SSML_wordsTTS_google_STT_google.wav"))
@@ -116,11 +130,11 @@ if __name__ == '__main__':
     list_exmaples = ["Les enfants ont appris à lire rapidement", "Mon ancien ami est venu me rendre visite hier"]
     for text in list_exmaples:
         output_dir = "/home/andromedalactea/freelance/TTS_platforms_analysis/google/autput_audios"
-        # Generar una nueva carpeta para cada ejecución
         output_dir = os.path.join(output_dir, text.replace(" ", "_"))
 
-        generate_audio_samples(text, output_dir, language_code="fr-FR", voice_name="fr-FR-Studio-D")
+        generate_audio_samples(text, output_dir, language_code="fr-FR", voice_name="fr-FR-Wavenet-A")
 
-# ["Les enfants ont appris à lire rapidement", "Mon ancien ami est venu me rendre visite hier"] language_code="fr-FR", voice_name="fr-FR-Studio-D"
-# ["Our New an innovative technology", "Is it ready?", "What are you doing?"] language_code="en-US", voice_name="en-US-Studio-Q"
-# ["Le he dicho", "Si así es", "Te espero", "Voy a ir"] language_code="es-US", voice_name="es-US-Studio-B"
+
+# ["Les enfants ont appris à lire rapidement", "Mon ancien ami est venu me rendre visite hier"] language_code="fr-FR", voice_name="fr-FR-Wavenet-A"
+# ["Our New an innovative technology", "Is it ready?", "What are you doing?"] language_code="en-US", voice_name="en-US-Wavenet-B"
+# ["Le he dicho", "Si así es", "Te espero", "Voy a ir"] language_code="es-US", voice_name="es-US-Wavenet-B"
