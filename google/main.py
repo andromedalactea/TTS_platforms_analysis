@@ -8,7 +8,7 @@ from join_audios import merge_audios_with_pause
 os.environ["GOOGLE_APPLICATION_CREDENTIALS"] = "/home/andromedalactea/freelance/TTS_platforms_analysis/credentials/vaulted-bit-390622-5ede8f5d79ee.json"
 
 def create_ssml(text, ssml_rate=100, ssml_break=0):
-    """Función para crear el texto SSML con marcas de tiempo."""
+    """Function to create SSML text with the provided rate and break time."""
     ssml_prefix = '<speak>'
     ssml_suffix = '</speak>'
 
@@ -38,7 +38,7 @@ def create_ssml(text, ssml_rate=100, ssml_break=0):
     return ssml_text
 
 def synthesize_text(text, file_path, add_breaks=False, speed=1.0, language_code="en-US", voice_name="en-US-Polyglot-1"):
-    """Función para sintetizar texto a audio con la opción de agregar pausas entre palabras o no."""
+    """Function to sintetize the text and save the audio file. Return the timepoints of the words.""""
     client = texttospeech.TextToSpeechClient()
     
     if add_breaks:
