@@ -38,7 +38,7 @@ def create_ssml(text, ssml_rate=100, ssml_break=0):
     return ssml_text
 
 def synthesize_text(text, file_path, add_breaks=False, speed=1.0, language_code="en-US", voice_name="en-US-Polyglot-1"):
-    """Function to sintetize the text and save the audio file. Return the timepoints of the words.""""
+    """Function to sintetize the text and save the audio file. Return the timepoints of the words."""
     client = texttospeech.TextToSpeechClient()
     
     if add_breaks:
@@ -87,10 +87,11 @@ def split_audio(input_audio_path, output_folder, word_timepoints, identification
         audio_length = in_wav.getnframes()
 
         time_keys = sorted(word_timepoints.keys())
+        print(f"Timepoints: {time_keys}")
         for idx in range(len(time_keys)):
             word_start = word_timepoints[time_keys[idx]]
             word_end = word_timepoints[time_keys[idx + 1]] if idx + 1 < len(time_keys) else audio_length / frame_rate
-
+            print(f"Word {idx}: {word_start} - {word_end}")
             start_frame = int(word_start * frame_rate)
             end_frame = int(word_end * frame_rate)
             in_wav.setpos(start_frame)

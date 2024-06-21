@@ -4,3 +4,4 @@ pydub
 pygame
 python-dotenv
 requests
+azure-cognitiveservices-speech
