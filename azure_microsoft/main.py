@@ -130,7 +130,7 @@ def generate_audio_samples(text, output_dir, language_code="en-US", voice_name="
     # Generate an audio with the words spaced in only one
     merge_audios_with_pause(os.path.join(output_dir, "word_by_word"), 'spaced', os.path.join(output_dir, "4__Joined_spaced_audio_with_spaced_SSML_wordsTTS.wav"))
     
-    # Generate an audio with the words spaced in only one for full spaced audio
+    # Generate an audio with the words spaced in only one for full  audio
     merge_audios_with_pause(os.path.join(output_dir, "word_by_word"), 'full', os.path.join(output_dir, "3__Joined_spaced_audio_with_full_words_TTS.wav"))
 
 # Example usage
